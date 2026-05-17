@@ -33,7 +33,7 @@
 
         <main class="space-y-8">
             <div id="dropZone" class="border border-dashed border-zinc-800 bg-[#020202] rounded-xl p-8 text-center transition-all duration-200 hover:border-zinc-700">
-                <div class="max-w-sm mx-auto space-y-3">
+                <div id="dropZoneContent" class="max-w-sm mx-auto space-y-3">
                     <p class="text-xs text-zinc-300 font-medium leading-relaxed">
                         Click anywhere on this page and press <kbd class="bg-zinc-900 px-2 py-0.5 rounded text-[10px] border border-zinc-700 font-sans text-white font-bold mx-0.5">Ctrl+V</kbd> or <kbd class="bg-zinc-900 px-2 py-0.5 rounded text-[10px] border border-zinc-700 font-sans text-white font-bold mx-0.5">Cmd+V</kbd> to paste a text schedule or screenshot.
                     </p>
@@ -45,7 +45,7 @@
                         </label>
                     </div>
                 </div>
-                <div id="ocrStatus" class="text-[11px] text-amber-400 mt-4 hidden font-semibold tracking-wide"></div>
+                <div id="ocrStatus" class="text-[11px] text-amber-400 mt-2 hidden font-semibold tracking-wide"></div>
             </div>
 
             <div class="space-y-4">
@@ -62,7 +62,7 @@
                         </thead>
                         <tbody id="shiftsTableBody" class="divide-y divide-zinc-950">
                             <tr>
-                                <td colspan="5" class="p-8 text-center text-zinc-500 font-medium italic">No shifts loaded yet. Paste something above to instantly process it.</td>
+                                <td id="placeholderRow" colspan="5" class="p-8 text-center text-zinc-500 font-medium italic">No shifts loaded yet. Paste something above to instantly process it.</td>
                             </tr>
                         </tbody>
                     </table>
@@ -84,7 +84,7 @@
         let parsedShifts = [];
         const currentYear = 2026; 
 
-        // System Core Infrastructure Interaction Bindings
+        // Core Infrastructure System Hook Bindings
         document.getElementById('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) handleImageStream(e.target.files[0]); });
         
         window.addEventListener('dragover', (e) => e.preventDefault());
@@ -96,49 +96,75 @@
         // Universal Clipboard Sniffer Matrix
         window.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            
+            let imageFound = false;
+
             for (let i = 0; i < items.length; i++) {
                 if (items[i].type.indexOf('image') !== -1) {
                     handleImageStream(items[i].getAsFile());
+                    imageFound = true;
                     e.preventDefault();
-                    return;
+                    break;
                 }
             }
 
-            const textData = e.clipboardData.getData('text');
-            if (textData && textData.trim().length > 0) {
-                const statusDiv = document.getElementById('ocrStatus');
-                statusDiv.classList.remove('hidden');
-                statusDiv.className = "text-[11px] text-emerald-400 mt-3 font-semibold";
-                statusDiv.innerText = "Processing pasted text lines...";
-                parseTextSchedule(textData);
-                e.preventDefault();
+            if (!imageFound) {
+                const textData = e.clipboardData.getData('text');
+                if (textData && textData.trim().length > 0) {
+                    setProcessingState("Processing pasted text lines...");
+                    parseTextSchedule(textData);
+                    e.preventDefault();
+                }
             }
         });
 
-        function handleImageStream(file) {
+        function setProcessingState(message) {
             const statusDiv = document.getElementById('ocrStatus');
+            const placeholder = document.getElementById('placeholderRow');
+            const dZone = document.getElementById('dropZone');
+            
+            dZone.className = "border border-dashed border-amber-800/60 bg-[#020202] rounded-xl p-8 text-center transition-all duration-200";
             statusDiv.classList.remove('hidden');
-            statusDiv.className = "text-[11px] text-amber-400 animate-pulse mt-3 font-semibold";
-            statusDiv.innerText = "Reading schedule image data...";
+            statusDiv.className = "text-[11px] text-amber-400 animate-pulse mt-2 font-semibold";
+            statusDiv.innerText = message;
+
+            if (placeholder) {
+                placeholder.innerText = "Analyzing schedule data. Please wait...";
+                placeholder.className = "p-8 text-center text-amber-500 font-medium italic animate-pulse";
+            }
+        }
+
+        function handleImageStream(file) {
+            setProcessingState("Reading schedule image data...");
 
             Tesseract.recognize(file, 'eng')
                 .then(({ data: { text } }) => {
-                    statusDiv.className = "text-[11px] text-emerald-400 mt-3 font-semibold";
+                    const statusDiv = document.getElementById('ocrStatus');
+                    const dZone = document.getElementById('dropZone');
+                    dZone.className = "border border-dashed border-zinc-900 bg-[#020202] rounded-xl p-8 text-center transition-all duration-200";
+                    statusDiv.className = "text-[11px] text-emerald-400 mt-2 font-semibold";
                     statusDiv.innerText = "Image read complete.";
                     parseTextSchedule(text);
                 })
                 .catch(err => {
-                    statusDiv.className = "text-[11px] text-rose-500 mt-3 font-semibold";
+                    const statusDiv = document.getElementById('ocrStatus');
+                    const dZone = document.getElementById('dropZone');
+                    dZone.className = "border border-dashed border-rose-950 bg-[#020202] rounded-xl p-8 text-center transition-all duration-200";
+                    statusDiv.className = "text-[11px] text-rose-500 mt-2 font-semibold";
                     statusDiv.innerText = "Error parsing screenshot details.";
+                    const placeholder = document.getElementById('placeholderRow');
+                    if (placeholder) {
+                        placeholder.innerText = "No shifts loaded yet. Paste something above to instantly process it.";
+                        placeholder.className = "p-8 text-center text-zinc-500 font-medium italic";
+                    }
                     console.error(err);
                 });
         }
 
-        // Sequential Context-Aware Multi-Line Parser Engine [Refactored State Logic]
+        // Sequential Context-Aware Multi-Line Parser Engine
         function parseTextSchedule(text) {
-            parsedShifts = [];
-            const lines = text.split('\n');
+            const incomingShifts = [];
+            const cleanInput = text.replace(/\u00A0/g, ' '); 
+            const lines = cleanInput.split('\n');
 
             const timeRegex = /([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?\s*(?:-|\u2013|\u2014|to)\s*([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?/i;
             const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})|(\d{1,2})[\/\-](\d{1,2})/i;
@@ -189,7 +215,7 @@
                         activeShift.task = sanitizeOcrNoise(remaining);
                     }
 
-                    parsedShifts.push(activeShift);
+                    incomingShifts.push(activeShift);
                 } 
                 else if (!dateMatch && activeShift) {
                     let cleanTaskLine = sanitizeOcrNoise(clearLine);
@@ -204,31 +230,42 @@
                 }
             });
 
-            // Structural safety wipe to remove broken trailing character noise splits
-            parsedShifts.forEach(s => {
-                s.task = s.task.replace(/\s*-\s*$/, '').trim();
+            // Idempotency Loop: Block duplicates and compress spacing connector artifacts
+            incomingShifts.forEach(incoming => {
+                incoming.task = incoming.task
+                    .replace(/\s*-\s*-\s*/g, ' - ') // Flatten broken double-hyphen lines
+                    .replace(/\s*-\s*$/, '')        // Remove trailing single hyphens cleanly
+                    .trim();
+
+                const isDuplicate = parsedShifts.some(existing => 
+                    existing.date === incoming.date && 
+                    existing.startTime === incoming.startTime && 
+                    existing.endTime === incoming.endTime &&
+                    existing.task === incoming.task
+                );
+
+                if (!isDuplicate && incoming.task.length > 0) {
+                    parsedShifts.push(incoming);
+                }
             });
 
             renderTableUI();
         }
 
-        // Deep-Cleaning Scrubber targeting Portal Platform Navigation Elements explicitly
+        // Deep-Cleaning Scrubber targeting Portal Navigation, Symbols, and Clipped Trailing Elements
         function sanitizeOcrNoise(str) {
             return str
-                // Strip structural portal interface keywords entirely
                 .replace(/\b(home|schedule|timesheets|time off|my shifts|team schedule|pick up shifts|prev week|next week)\b/gi, '')
-                // Zap un-parseable algebra noise patterns generated by UI container frames (e.g. - 1] = x)
-                .replace(/[-\s\d\][=xX]+$/, '')
-                // Strip broken OCR symbols, checkboxes, and leading bullet point configurations cleanly
+                .replace(/[-\s\d\]]*[=\]][-\s\d\][=xX]*$/, '')
+                .replace(/\s*@\s*[A-Za-z0-9]{1,2}$/g, '')
                 .replace(/^[@•·*‐\-+\s>»®©ºª]*[bB]?[º®©]\s*/, '')
                 .replace(/^[@•·*‐\-+\s>»®©ºª]+/, '')
-                // Clean trailing crop artifacts
                 .replace(/[\s.·…>»\-–—~|=+]+$/, '')
                 .replace(/\s+/g, ' ')
                 .trim();
         }
 
-        // Structural Native Injection DOM Node Generation Engine
+        // Native Injection DOM Rendering Engine
         function renderTableUI() {
             const tbody = document.getElementById('shiftsTableBody');
             const downloadBtn = document.getElementById('downloadBtn');
@@ -236,7 +273,7 @@
             tbody.innerHTML = '';
 
             if (parsedShifts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-zinc-500 font-medium italic">No shifts loaded yet. Paste something above to instantly process it.</td></tr>';
+                tbody.innerHTML = '<tr><td id="placeholderRow" colspan="5" class="p-8 text-center text-zinc-500 font-medium italic">No shifts loaded yet. Paste something above to instantly process it.</td></tr>';
                 downloadBtn.disabled = true;
                 downloadBtn.innerText = "Awaiting schedule data...";
                 downloadBtn.className = "w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold transition-all opacity-45 cursor-not-allowed";
@@ -281,7 +318,6 @@
                 tbody.appendChild(tr);
             });
 
-            // Elevate Presentation Controls dynamically for consumer processing actions
             downloadBtn.disabled = false;
             downloadBtn.innerText = 'Export to Google Calendar / Calendar Apps';
             downloadBtn.className = "w-full sm:w-auto bg-black text-[#FDD023] border border-[#FDD023]/40 rounded-lg px-6 py-2.5 text-xs font-bold shadow-sm hover:border-[#FDD023] transition-all cursor-pointer active:scale-[0.98]";
@@ -290,8 +326,30 @@
 
         function formatICSDate(dateStr, timeStr) { return `${dateStr.replace(/[-]/g, '')}T${timeStr.replace(/[:]/g, '')}00`; }
 
+        // Device-Agnostic iCalendar Stream Generation Engine
         function generateICSFile() {
-            let ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ICS Automator Elegant Bold//EN', 'X-WR-TIMEZONE:America/Chicago'];
+            let ics = [
+                'BEGIN:VCALENDAR', 
+                'VERSION:2.0', 
+                'PRODID:-//ICS Automator Device Agnostic//EN',
+                'BEGIN:VTIMEZONE',
+                'TZID:America/Chicago',
+                'BEGIN:STANDARD',
+                'DTSTART:20071104T020000',
+                'RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SUN',
+                'TZOFFSETFROM:-0500',
+                'TZOFFSETTO:-0600',
+                'TZNAME:CST',
+                'END:STANDARD',
+                'BEGIN:DAYLIGHT',
+                'DTSTART:20070311T020000',
+                'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SUN',
+                'TZOFFSETFROM:-0600',
+                'TZOFFSETTO:-0500',
+                'TZNAME:CDT',
+                'END:DAYLIGHT',
+                'END:VTIMEZONE'
+            ];
 
             parsedShifts.forEach(s => {
                 const startFormatted = formatICSDate(s.date, s.startTime);
