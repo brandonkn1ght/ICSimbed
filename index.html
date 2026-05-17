@@ -7,28 +7,17 @@
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
-        body { 
-            background-color: #000000; 
-            color: #ffffff; 
-            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        }
-        input { 
-            background-color: #000000 !important;
-            font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            font-weight: 500;
-        }
+        body { background-color: #000000; color: #ffffff; font-family: Inter, system-ui, sans-serif; }
+        input { background-color: #000000 !important; font-family: Inter, system-ui, sans-serif; font-weight: 500; }
         ::-webkit-scrollbar { height: 4px; width: 4px; }
         ::-webkit-scrollbar-track { background: #000000; }
         ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 2px; }
     </style>
 </head>
 <body class="min-h-screen p-4 md:p-8 max-w-2xl mx-auto antialiased selection:bg-zinc-800 flex flex-col justify-between">
-
     <div>
         <header class="border-b border-zinc-900 pb-4 mb-8">
-            <h1 class="text-sm font-bold tracking-tight text-zinc-100 uppercase">
-                Schedule Automator
-            </h1>
+            <h1 class="text-sm font-bold tracking-tight text-zinc-100 uppercase">Schedule Automator</h1>
         </header>
 
         <main class="space-y-8">
@@ -40,8 +29,7 @@
                     <div class="text-[11px] text-zinc-500 font-medium flex items-center justify-center gap-1.5">
                         <span>or</span>
                         <label class="text-zinc-300 hover:text-white cursor-pointer font-semibold underline underline-offset-2 transition-colors">
-                            browse file
-                            <input type="file" id="fileInput" accept="image/*" class="hidden">
+                            browse file <input type="file" id="fileInput" accept="image/*" class="hidden">
                         </label>
                     </div>
                 </div>
@@ -69,328 +57,165 @@
                 </div>
 
                 <div class="flex flex-col items-end space-y-3 pt-2">
-                    <button id="downloadBtn" class="w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold transition-all opacity-45 cursor-not-allowed" disabled>
-                        Awaiting schedule data...
-                    </button>
-                    
-                    <a id="googleLink" href="https://calendar.google.com/calendar/r/settings/export" target="_blank" class="w-full sm:w-auto text-center bg-zinc-950 text-zinc-400 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold hover:text-white hover:border-zinc-700 transition-all hidden">
-                        2. Open Google Calendar Import Page &rarr;
-                    </a>
-
-                    <div id="helpText" class="text-[11px] text-zinc-500 font-medium tracking-wide hidden text-right leading-relaxed">
-                        Step 1: Save the calendar file above.<br>
-                        Step 2: Go to the Import Page and drop your downloaded file directly into the box.
-                    </div>
+                    <button id="downloadBtn" class="w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold transition-all opacity-45 cursor-not-allowed" disabled>Awaiting schedule data...</button>
+                    <a id="googleLink" href="https://calendar.google.com/calendar/r/settings/export" target="_blank" class="w-full sm:w-auto text-center bg-zinc-950 text-zinc-400 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold hover:text-white hover:border-zinc-700 transition-all hidden">2. Open Google Calendar Import Page &rarr;</a>
+                    <div id="helpText" class="text-[11px] text-zinc-500 font-medium tracking-wide hidden text-right leading-relaxed"></div>
                 </div>
             </div>
         </main>
     </div>
 
     <script>
-        let parsedShifts = [];
-        const currentYear = 2026; 
+        let parsedShifts = [], tesseractWorker = null;
+        const $ = id => document.getElementById(id);
+        const isMobile = /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
-        document.getElementById('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) handleImageStream(e.target.files[0]); });
-        window.addEventListener('dragover', (e) => e.preventDefault());
-        window.addEventListener('drop', (e) => {
-            e.preventDefault();
-            if (e.dataTransfer.files[0]) handleImageStream(e.dataTransfer.files[0]);
+        $('fileInput').addEventListener('change', e => e.target.files[0] && handleImg(e.target.files[0]));
+        window.addEventListener('dragover', e => e.preventDefault());
+        window.addEventListener('drop', e => { e.preventDefault(); e.dataTransfer.files[0] && handleImg(e.dataTransfer.files[0]); });
+        window.addEventListener('paste', e => {
+            const items = (e.clipboardData || e.originalEvent?.clipboardData).items;
+            for (let item of items) {
+                if (item.type.includes('image')) { handleImg(item.getAsFile()); return e.preventDefault(); }
+            }
+            const txt = e.clipboardData.getData('text');
+            if (txt?.trim()) { setProcessingState("Processing pasted text lines..."); parseTextSchedule(txt); e.preventDefault(); }
         });
 
-        window.addEventListener('paste', (e) => {
-            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
-            let imageFound = false;
-
-            for (let i = 0; i < items.length; i++) {
-                if (items[i].type.indexOf('image') !== -1) {
-                    handleImageStream(items[i].getAsFile());
-                    imageFound = true;
-                    e.preventDefault();
-                    break;
-                }
-            }
-
-            if (!imageFound) {
-                const textData = e.clipboardData.getData('text');
-                if (textData && textData.trim().length > 0) {
-                    setProcessingState("Processing pasted text lines...");
-                    parseTextSchedule(textData);
-                    e.preventDefault();
-                }
-            }
-        });
-
-        function setProcessingState(message) {
-            const statusDiv = document.getElementById('ocrStatus');
-            const placeholder = document.getElementById('placeholderRow');
-            const dZone = document.getElementById('dropZone');
-            
-            dZone.className = "border border-dashed border-amber-800/60 bg-[#020202] rounded-xl p-8 text-center transition-all duration-200";
-            statusDiv.classList.remove('hidden');
-            statusDiv.className = "text-[11px] text-amber-400 animate-pulse mt-2 font-semibold";
-            statusDiv.innerText = message;
-
-            if (placeholder) {
-                placeholder.innerText = "Analyzing schedule data. Please wait...";
-                placeholder.className = "p-8 text-center text-amber-500 font-medium italic animate-pulse";
+        function setProcessingState(msg, isErr = false, isSucc = false) {
+            const status = $('ocrStatus'), ph = $('placeholderRow'), dz = $('dropZone');
+            status.classList.remove('hidden');
+            dz.className = `border border-dashed rounded-xl p-8 text-center transition-all duration-200 ${isErr ? 'border-rose-950' : isSucc ? 'border-emerald-900/60' : 'border-amber-800/60'}`;
+            status.className = `text-[11px] mt-2 font-semibold ${isErr ? 'text-rose-500' : isSucc ? 'text-emerald-400' : 'text-amber-400 animate-pulse'}`;
+            status.innerText = msg;
+            if (ph) {
+                ph.innerText = isErr ? msg : "Analyzing schedule data. Please wait...";
+                ph.className = `p-8 text-center font-medium italic ${isErr ? 'text-rose-500' : 'text-amber-500 animate-pulse'}`;
             }
         }
 
-        function handleImageStream(file) {
-            setProcessingState("Reading schedule image data...");
-
-            Tesseract.recognize(file, 'eng')
-                .then(({ data: { text } }) => {
-                    const statusDiv = document.getElementById('ocrStatus');
-                    const dZone = document.getElementById('dropZone');
-                    dZone.className = "border border-dashed border-zinc-900 bg-[#020202] rounded-xl p-8 text-center transition-all duration-200";
-                    statusDiv.className = "text-[11px] text-emerald-400 mt-2 font-semibold";
-                    statusDiv.innerText = "Image read complete.";
-                    parseTextSchedule(text);
-                })
-                .catch(err => {
-                    const statusDiv = document.getElementById('ocrStatus');
-                    const dZone = document.getElementById('dropZone');
-                    dZone.className = "border border-dashed border-rose-950 bg-[#020202] rounded-xl p-8 text-center transition-all duration-200";
-                    statusDiv.className = "text-[11px] text-rose-500 mt-2 font-semibold";
-                    statusDiv.innerText = "Error parsing screenshot details.";
-                    const placeholder = document.getElementById('placeholderRow');
-                    if (placeholder) {
-                        placeholder.innerText = "No shifts loaded yet. Paste something above to instantly process it.";
-                        placeholder.className = "p-8 text-center text-zinc-500 font-medium italic";
-                    }
-                    console.error(err);
-                });
+        async function handleImg(file) {
+            setProcessingState("Warming up thread schedulers...");
+            try {
+                if (!tesseractWorker) tesseractWorker = await Tesseract.createWorker('eng');
+                setProcessingState("Reading schedule image data...");
+                const { data: { text } } = await tesseractWorker.recognize(file);
+                if (!text?.trim()) return setProcessingState("We couldn't read any text in that image. Try a cleaner snip!", true);
+                parseTextSchedule(text);
+            } catch (err) {
+                setProcessingState("Error parsing screenshot details.", true);
+            }
         }
 
         function parseTextSchedule(text) {
-            const incomingShifts = [];
-            const cleanInput = text.replace(/\u00A0/g, ' '); 
-            const lines = cleanInput.split('\n');
-
-            const timeRegex = /([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?\s*(?:-|\u2013|\u2014|to)\s*([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?/i;
-            const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})|(\d{1,2})[\/\-](\d{1,2})/i;
-
-            let currentTrackedDate = new Date(currentYear, new Date().getMonth(), new Date().getDate());
-            let activeShift = null;
+            const incoming = [], lines = text.replace(/\u00A0/g, ' ').split('\n');
+            const timeRx = /([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?\s*(?:-|\u2013|\u2014|to)\s*([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?/i;
+            const dateRx = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})|(\d{1,2})[\/\-](\d{1,2})/i;
+            const now = new Date();
+            let curDate = new Date(now.getFullYear(), now.getMonth(), now.getDate()), active = null;
 
             lines.forEach(line => {
-                const clearLine = line.trim();
-                if (!clearLine) return;
-
-                const dateMatch = clearLine.match(dateRegex);
-                if (dateMatch) {
-                    if (dateMatch[1]) {
-                        const monthIdx = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(dateMatch[1].toLowerCase().substring(0,3));
-                        currentTrackedDate = new Date(currentYear, monthIdx, parseInt(dateMatch[2]));
-                    } else if (dateMatch[3]) {
-                        currentTrackedDate = new Date(currentYear, parseInt(dateMatch[3]) - 1, parseInt(dateMatch[4]));
-                    }
+                const clean = line.trim();
+                if (!clean) return;
+                const dMatch = clean.match(dateRx);
+                if (dMatch) {
+                    let yr = now.getFullYear(), m = dMatch[1] ? ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(dMatch[1].toLowerCase().substring(0,3)) : parseInt(dMatch[3]) - 1, d = parseInt(dMatch[2] || dMatch[4]);
+                    if (now.getMonth() === 11 && m === 0) yr++;
+                    curDate = new Date(yr, m, d);
                 }
+                const tMatch = clean.match(timeRx);
+                if (tMatch) {
+                    let sH = parseInt(tMatch[1]), sM = tMatch[2] ? parseInt(tMatch[2]) : 0, sP = tMatch[3]?.toUpperCase();
+                    let eH = parseInt(tMatch[4]), eM = tMatch[5] ? parseInt(tMatch[5]) : 0, eP = tMatch[6]?.toUpperCase();
+                    if (!sP && eP) sP = (eP === 'PM' && sH > eH && sH < 12) ? 'AM' : eP;
+                    if (sP === 'PM' && sH < 12) sH += 12;
+                    if (sP === 'AM' && sH === 12) sH = 0;
+                    if (eP === 'PM' && eH < 12) eH += 12;
+                    if (eP === 'AM' && eH === 12) eH = 0;
+                    if (!sP && !eP) { if (sH < 7) sH += 12; if (eH < 12 && eH < sH) eH += 12; }
 
-                const timeMatch = clearLine.match(timeRegex);
-                if (timeMatch) {
-                    let startH = parseInt(timeMatch[1]);
-                    let startM = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
-                    let startAmPm = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
-                    let endH = parseInt(timeMatch[4]);
-                    let endM = timeMatch[5] ? parseInt(timeMatch[5]) : 0;
-                    let endAmPm = timeMatch[6] ? timeMatch[6].toUpperCase() : null;
-
-                    if (!startAmPm && endAmPm) startAmPm = endAmPm;
-                    if (startAmPm === 'PM' && startH < 12) startH += 12;
-                    if (startAmPm === 'AM' && startH === 12) startH = 0;
-                    if (endAmPm === 'PM' && endH < 12) endH += 12;
-                    if (endAmPm === 'AM' && endH === 12) endH = 0;
-                    if (!startAmPm && !endAmPm && startH < 7) startH += 12;
-                    if (!startAmPm && !endAmPm && endH < 12 && endH < startH) endH += 12;
-
-                    activeShift = {
-                        date: currentTrackedDate.toISOString().split('T')[0],
-                        startTime: `${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`,
-                        endTime: `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`,
+                    active = {
+                        date: curDate.toISOString().split('T')[0],
+                        startTime: `${String(sH).padStart(2,'0')}:${String(sM).padStart(2,'0')}`,
+                        endTime: `${String(eH).padStart(2,'0')}:${String(eM).padStart(2,'0')}`,
                         task: ""
                     };
-
-                    let remaining = clearLine.replace(timeMatch[0], '').trim();
-                    if (remaining && !remaining.match(dateRegex) && remaining.length > 2) {
-                        activeShift.task = remaining;
-                    }
-
-                    incomingShifts.push(activeShift);
-                } 
-                else if (!dateMatch && activeShift) {
-                    if (clearLine.length > 1) {
-                        if (activeShift.task) {
-                            activeShift.task += " " + clearLine;
-                        } else {
-                            activeShift.task = clearLine;
-                        }
-                    }
+                    const rem = clean.replace(tMatch[0], '').trim();
+                    if (rem && !rem.match(dateRx) && rem.length > 2) active.task = rem;
+                    incoming.push(active);
+                } else if (!dMatch && active && clean.length > 1) {
+                    active.task = active.task ? `${active.task} ${clean}` : clean;
                 }
             });
 
-            incomingShifts.forEach(incoming => {
-                const generatedTitle = automateDescription(incoming.task);
-
-                const isDuplicate = parsedShifts.some(existing => 
-                    existing.date === incoming.date && 
-                    existing.startTime === incoming.startTime && 
-                    existing.endTime === incoming.endTime &&
-                    existing.task === generatedTitle
-                );
-
-                if (!isDuplicate && generatedTitle.length > 0) {
-                    incoming.task = generatedTitle;
-                    parsedShifts.push(incoming);
-                }
+            incoming.forEach(inc => {
+                const title = automateDescription(inc.task);
+                const isDup = parsedShifts.some(e => e.date === inc.date && e.startTime === inc.startTime && e.endTime === inc.endTime && e.task.replace(/\s+/g, '') === title.replace(/\s+/g, ''));
+                if (!isDup && title) { inc.task = title; parsedShifts.push(inc); }
             });
-
+            setProcessingState(parsedShifts.length ? "Schedule parsed successfully." : "We found lines but no matching shift configurations. Check crop margins!", !parsedShifts.length, !!parsedShifts.length);
             renderTableUI();
         }
 
-        function automateDescription(rawText) {
-            const token = rawText.toLowerCase();
-
-            if (token.includes('library') && token.includes('training') && (token.includes('listening') || token.includes('stsa'))) {
-                return "Library Training - Listening to STSA Calls";
+        function automateDescription(raw) {
+            const tk = raw.toLowerCase();
+            if (tk.includes('library') && tk.includes('training')) {
+                return (tk.includes('listening') || tk.includes('stsa')) ? "Library Training - Listening to STSA Calls" : tk.includes('monitored') ? "Library Training - Calls Monitored @ Service Desk" : "Library Training";
             }
-            if (token.includes('library') && token.includes('training') && token.includes('monitored')) {
-                return "Library Training - Calls Monitored @ Service Desk";
-            }
-            if (token.includes('library') && token.includes('training')) {
-                return "Library Training";
-            }
-            if (token.includes('service') && token.includes('desk')) {
-                return "Service Desk Shift";
-            }
-            if (token.includes('calls') && token.includes('monitored')) {
-                return "Calls Monitored @ Service Desk";
-            }
-
-            return rawText
-                .replace(/\b(home|schedule|timesheets|time off|my shifts|team schedule|pick up shifts|prev week|next week)\b/gi, '')
-                .replace(/[-\s\d\]]*[=\]][-\s\d\][=xX]*$/, '')
-                .replace(/\s*@\s*\S*$/g, '') 
-                .replace(/^[@•·*‐\-+\s>»®©ºª]*[bB]?[º®©]\s*/, '')
-                .replace(/^[@•·*‐\-+\s>»®©ºª]+/, '')
-                .replace(/[\s.·…>»\-–—~|=+]+$/, '')
-                .replace(/\s+/g, ' ')
-                .trim();
+            if (tk.includes('service') && tk.includes('desk')) return "Service Desk Shift";
+            if (tk.includes('calls') && tk.includes('monitored')) return "Calls Monitored @ Service Desk";
+            return raw.replace(/\b(home|schedule|timesheets|time off|my shifts|team schedule|pick up shifts|prev week|next week)\b/gi, '')
+                .replace(/[-\s\d\]]*[=\]][-\s\d\][=xX]*$/, '').replace(/\s*@\s*\S*$/g, '')
+                .replace(/^[@•·*‐\-+\s>»®©ºª]*[bB]?[º®©]\s*|^[@•·*‐\-+\s>»®©ºª]+/, '').replace(/[\s.·…>»\-–—~|=+]+$/, '').replace(/\s+/g, ' ').trim();
         }
 
         function renderTableUI() {
-            const tbody = document.getElementById('shiftsTableBody');
-            const downloadBtn = document.getElementById('downloadBtn');
-            const googleLink = document.getElementById('googleLink');
-            const helpText = document.getElementById('helpText');
-            tbody.innerHTML = '';
-
-            if (parsedShifts.length === 0) {
+            const tbody = $('shiftsTableBody'), dlBtn = $('downloadBtn'), gLink = $('googleLink'), hText = $('helpText');
+            if (!parsedShifts.length) {
                 tbody.innerHTML = '<tr><td id="placeholderRow" colspan="5" class="p-8 text-center text-zinc-500 font-medium italic">No shifts loaded yet. Paste something above to instantly process it.</td></tr>';
-                downloadBtn.disabled = true;
-                downloadBtn.innerText = "Awaiting schedule data...";
-                downloadBtn.className = "w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold transition-all opacity-45 cursor-not-allowed";
-                googleLink.classList.add('hidden');
-                helpText.classList.add('hidden');
-                return;
+                dlBtn.disabled = true; dlBtn.innerText = "Awaiting schedule data...";
+                dlBtn.className = "w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold transition-all opacity-45 cursor-not-allowed";
+                gLink.classList.add('hidden'); hText.classList.add('hidden'); return;
             }
-
-            parsedShifts.forEach((shift, index) => {
-                const tr = document.createElement('tr');
-                tr.className = "border-b border-zinc-900/60 bg-zinc-950/20 hover:bg-zinc-900/40 transition-colors";
-
-                const dataFields = [
-                    { type: 'date', val: shift.date, field: 'date' },
-                    { type: 'time', val: shift.startTime, field: 'startTime' },
-                    { type: 'time', val: shift.endTime, field: 'endTime' },
-                    { type: 'text', val: shift.task, field: 'task', ph: 'Details...' }
-                ];
-
-                dataFields.forEach(f => {
-                    const td = document.createElement('td');
-                    td.className = "p-2";
-                    const input = document.createElement('input');
-                    input.type = f.type;
-                    input.value = f.val;
-                    if (f.ph) input.placeholder = f.ph;
-                    input.className = "w-full bg-transparent border border-transparent focus:border-zinc-800 focus:bg-[#050505] rounded px-2 py-1 text-zinc-100 focus:outline-none transition-all text-xs font-semibold select-none focus:select-text";
-                    input.style.backgroundColor = "transparent";
-                    input.addEventListener('change', (e) => { parsedShifts[index][f.field] = e.target.value; });
-                    td.appendChild(input);
-                    tr.appendChild(td);
-                });
-
-                const actionTd = document.createElement('td');
-                actionTd.className = "p-2 text-center";
-                const rmBtn = document.createElement('button');
-                rmBtn.innerText = "✕";
-                rmBtn.className = "text-zinc-600 hover:text-rose-400 font-sans font-bold text-xs cursor-pointer transition-colors px-2 py-1";
-                rmBtn.addEventListener('click', () => { parsedShifts.splice(index, 1); renderTableUI(); });
-                actionTd.appendChild(rmBtn);
-                tr.appendChild(actionTd);
-
-                tbody.appendChild(tr);
-            });
-
-            downloadBtn.disabled = false;
-            downloadBtn.innerText = '1. Download Calendar File';
-            downloadBtn.className = "w-full sm:w-auto bg-black text-[#FDD023] border border-[#FDD023]/40 rounded-lg px-6 py-2.5 text-xs font-bold shadow-sm hover:border-[#FDD023] transition-all cursor-pointer active:scale-[0.98]";
-            
-            googleLink.classList.remove('hidden');
-            helpText.classList.remove('hidden');
+            tbody.innerHTML = parsedShifts.map((s, i) => `
+                <tr class="border-b border-zinc-900/60 bg-zinc-950/20 hover:bg-zinc-900/40 transition-colors" data-idx="${i}">
+                    <td class="p-2"><input type="date" data-field="date" value="${s.date}" class="inp-field w-full bg-transparent border border-transparent focus:border-zinc-800 focus:bg-[#050505] rounded px-2 py-1 text-zinc-100 focus:outline-none text-xs font-semibold"></td>
+                    <td class="p-2"><input type="time" data-field="startTime" value="${s.startTime}" class="inp-field w-full bg-transparent border border-transparent focus:border-zinc-800 focus:bg-[#050505] rounded px-2 py-1 text-zinc-100 focus:outline-none text-xs font-semibold"></td>
+                    <td class="p-2"><input type="time" data-field="endTime" value="${s.endTime}" class="inp-field w-full bg-transparent border border-transparent focus:border-zinc-800 focus:bg-[#050505] rounded px-2 py-1 text-zinc-100 focus:outline-none text-xs font-semibold"></td>
+                    <td class="p-2"><input type="text" data-field="task" value="${s.task}" placeholder="Details..." class="inp-field w-full bg-transparent border border-transparent focus:border-zinc-800 focus:bg-[#050505] rounded px-2 py-1 text-zinc-100 focus:outline-none text-xs font-semibold"></td>
+                    <td class="p-2 text-center"><button class="del-btn text-zinc-600 hover:text-rose-400 font-sans font-bold text-xs cursor-pointer px-2 py-1">✕</button></td>
+                </tr>
+            `).join('');
+            dlBtn.disabled = false; hText.classList.remove('hidden'); gLink.classList.toggle('hidden', isMobile);
+            dlBtn.innerText = isMobile ? 'Add Shifts to Your Calendar' : '1. Download Calendar File';
+            dlBtn.className = "w-full sm:w-auto bg-black text-[#FDD023] border border-[#FDD023]/40 rounded-lg px-6 py-2.5 text-xs font-bold shadow-sm hover:border-[#FDD023] transition-all cursor-pointer active:scale-[0.98]";
+            hText.innerHTML = isMobile ? "Tap the button to download, then <span class='text-white font-semibold'>tap the downloaded file</span> to add shifts." : "Step 1: Save the calendar file above.<br>Step 2: Open the Import Page and drop your downloaded file.";
         }
 
-        function formatICSDate(dateStr, timeStr) { return `${dateStr.replace(/[-]/g, '')}T${timeStr.replace(/[:]/g, '')}00`; }
+        $('shiftsTableBody').addEventListener('change', e => {
+            if (e.target.classList.contains('inp-field')) {
+                parsedShifts[e.target.closest('tr').dataset.idx][e.target.dataset.field] = e.target.value;
+                e.target.classList.add('border-emerald-800'); setTimeout(() => e.target.classList.remove('border-emerald-800'), 600);
+            }
+        });
+        $('shiftsTableBody').addEventListener('click', e => e.target.classList.contains('del-btn') && (parsedShifts.splice(e.target.closest('tr').dataset.idx, 1), renderTableUI()));
 
-        function generateICSFile() {
-            let ics = [
-                'BEGIN:VCALENDAR', 
-                'VERSION:2.0', 
-                'PRODID:-//ICS Automator Device Agnostic//EN',
-                'BEGIN:VTIMEZONE',
-                'TZID:America/Chicago',
-                'BEGIN:STANDARD',
-                'DTSTART:20071104T020000',
-                'RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SUN',
-                'TZOFFSETFROM:-0500',
-                'TZOFFSETTO:-0600',
-                'TZNAME:CST',
-                'END:STANDARD',
-                'BEGIN:DAYLIGHT',
-                'DTSTART:20070311T020000',
-                'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SUN',
-                'TZOFFSETFROM:-0600',
-                'TZOFFSETTO:-0500',
-                'TZNAME:CDT',
-                'END:DAYLIGHT',
-                'END:VTIMEZONE'
-            ];
-
+        $('downloadBtn').addEventListener('click', () => {
+            let ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ICS Automator//EN'];
             parsedShifts.forEach(s => {
-                const startFormatted = formatICSDate(s.date, s.startTime);
-                const endFormatted = formatICSDate(s.date, s.endTime);
-                
-                let summary = s.task ? s.task : "Work Shift";
-                const startParts = s.startTime.split(':');
-                const offset = ((parseInt(startParts[0]) * 60) + parseInt(startParts[1])) - 300; 
-
-                ics.push('BEGIN:VEVENT', `DTSTART;TZID=America/Chicago:${startFormatted}`, `DTEND;TZID=America/Chicago:${endFormatted}`, `SUMMARY:${summary}`);
+                const startF = s.date.replace(/-/g, '') + 'T' + s.startTime.replace(/:/g, '') + '00';
+                const endF = s.date.replace(/-/g, '') + 'T' + s.endTime.replace(/:/g, '') + '00';
+                const parts = s.startTime.split(':'), offset = (parseInt(parts[0]) * 60 + parseInt(parts[1])) - 300;
+                ics.push('BEGIN:VEVENT', `DTSTART:${startF}`, `DTEND:${endF}`, `SUMMARY:${s.task || "Work Shift"}`);
                 if (s.task) ics.push(`DESCRIPTION:${s.task}`);
-                
                 ics.push('TRANSP:OPAQUE', 'BEGIN:VALARM', offset < 0 ? 'TRIGGER:PT0M' : `TRIGGER:-PT${offset}M`, 'ACTION:DISPLAY', 'DESCRIPTION:Shift Reminder', 'END:VALARM', 'END:VEVENT');
             });
-
             ics.push('END:VCALENDAR');
-
-            const blob = new Blob([ics.join('\r\n')], { type: 'text/calendar;charset=utf-8;' });
             const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
+            link.href = URL.createObjectURL(new Blob([ics.join('\r\n')], { type: 'text/calendar;charset=utf-8;' }));
             link.download = `schedule_${new Date().toISOString().split('T')[0]}.ics`;
-            document.body.appendChild(link); link.click(); document.body.removeChild(link);
-        }
-
-        document.getElementById('downloadBtn').addEventListener('click', generateICSFile);
+            link.click();
+        });
     </script>
 </body>
 </html>
