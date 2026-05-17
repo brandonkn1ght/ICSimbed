@@ -84,16 +84,15 @@
         let parsedShifts = [];
         const currentYear = 2026; 
 
-        // Core Infrastructure System Hook Bindings
+        // Infrastructure Event Hooks
         document.getElementById('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) handleImageStream(e.target.files[0]); });
-        
         window.addEventListener('dragover', (e) => e.preventDefault());
         window.addEventListener('drop', (e) => {
             e.preventDefault();
             if (e.dataTransfer.files[0]) handleImageStream(e.dataTransfer.files[0]);
         });
 
-        // Universal Clipboard Sniffer Matrix
+        // Universal Input Interceptor Matrix
         window.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             let imageFound = false;
@@ -160,7 +159,7 @@
                 });
         }
 
-        // Sequential Context-Aware Multi-Line Parser Engine
+        // Multi-Line Shift Processor Logic Flow
         function parseTextSchedule(text) {
             const incomingShifts = [];
             const cleanInput = text.replace(/\u00A0/g, ' '); 
@@ -212,39 +211,35 @@
 
                     let remaining = clearLine.replace(timeMatch[0], '').trim();
                     if (remaining && !remaining.match(dateRegex) && remaining.length > 2) {
-                        activeShift.task = sanitizeOcrNoise(remaining);
+                        activeShift.task = remaining;
                     }
 
                     incomingShifts.push(activeShift);
                 } 
                 else if (!dateMatch && activeShift) {
-                    let cleanTaskLine = sanitizeOcrNoise(clearLine);
-
-                    if (cleanTaskLine && cleanTaskLine.length > 1) {
+                    if (clearLine.length > 1) {
                         if (activeShift.task) {
-                            activeShift.task += " - " + cleanTaskLine;
+                            activeShift.task += " " + clearLine;
                         } else {
-                            activeShift.task = cleanTaskLine;
+                            activeShift.task = clearLine;
                         }
                     }
                 }
             });
 
-            // Idempotency Loop: Block duplicates and compress spacing connector artifacts
+            // Run compiled blocks through the Smart Generation and Idempotency filters
             incomingShifts.forEach(incoming => {
-                incoming.task = incoming.task
-                    .replace(/\s*-\s*-\s*/g, ' - ') // Flatten broken double-hyphen lines
-                    .replace(/\s*-\s*$/, '')        // Remove trailing single hyphens cleanly
-                    .trim();
+                const generatedTitle = automateDescription(incoming.task);
 
                 const isDuplicate = parsedShifts.some(existing => 
                     existing.date === incoming.date && 
                     existing.startTime === incoming.startTime && 
                     existing.endTime === incoming.endTime &&
-                    existing.task === incoming.task
+                    existing.task === generatedTitle
                 );
 
-                if (!isDuplicate && incoming.task.length > 0) {
+                if (!isDuplicate && generatedTitle.length > 0) {
+                    incoming.task = generatedTitle;
                     parsedShifts.push(incoming);
                 }
             });
@@ -252,12 +247,33 @@
             renderTableUI();
         }
 
-        // Deep-Cleaning Scrubber targeting Portal Navigation, Symbols, and Clipped Trailing Elements
-        function sanitizeOcrNoise(str) {
-            return str
+        // Automated Semantic Dictionary Generation Engine
+        function automateDescription(rawText) {
+            const token = rawText.toLowerCase();
+
+            // Pattern Clustering Engine (Generates clean text instantly)
+            if (token.includes('library') && token.includes('training') && (token.includes('listening') || token.includes('stsa'))) {
+                return "Library Training - Listening to STSA Calls";
+            }
+            if (token.includes('library') && token.includes('training') && token.includes('monitored')) {
+                return "Library Training - Calls Monitored @ Service Desk";
+            }
+            if (token.includes('library') && token.includes('training')) {
+                return "Library Training";
+            }
+            if (token.includes('service') && token.includes('desk')) {
+                return "Service Desk Shift";
+            }
+            if (token.includes('calls') && token.includes('monitored')) {
+                return "Calls Monitored @ Service Desk";
+            }
+
+            // Fallback High-Security RegEx Scrubber for unfamiliar task streams
+            return rawText
                 .replace(/\b(home|schedule|timesheets|time off|my shifts|team schedule|pick up shifts|prev week|next week)\b/gi, '')
                 .replace(/[-\s\d\]]*[=\]][-\s\d\][=xX]*$/, '')
-                .replace(/\s*@\s*[A-Za-z0-9]{1,2}$/g, '')
+                // Drastically target and clip out ALL trailing characters following an "@" symbol at line ends
+                .replace(/\s*@\s*\S*$/g, '') 
                 .replace(/^[@•·*‐\-+\s>»®©ºª]*[bB]?[º®©]\s*/, '')
                 .replace(/^[@•·*‐\-+\s>»®©ºª]+/, '')
                 .replace(/[\s.·…>»\-–—~|=+]+$/, '')
@@ -265,7 +281,7 @@
                 .trim();
         }
 
-        // Native Injection DOM Rendering Engine
+        // Native Injection DOM Pipeline
         function renderTableUI() {
             const tbody = document.getElementById('shiftsTableBody');
             const downloadBtn = document.getElementById('downloadBtn');
@@ -326,7 +342,6 @@
 
         function formatICSDate(dateStr, timeStr) { return `${dateStr.replace(/[-]/g, '')}T${timeStr.replace(/[:]/g, '')}00`; }
 
-        // Device-Agnostic iCalendar Stream Generation Engine
         function generateICSFile() {
             let ics = [
                 'BEGIN:VCALENDAR', 
