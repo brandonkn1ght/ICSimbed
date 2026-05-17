@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ICS Creator</title>
-    <!-- Tailwind CSS for minimal styling -->
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <!-- Tesseract.js for client-side screenshot OCR -->
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -20,35 +18,25 @@
     </header>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Configuration & Inputs -->
         <div class="md:col-span-1 space-y-4">
-            <div>
-                <label class="block text-xs font-medium uppercase tracking-wider text-stone-500 mb-1">Global Location</label>
-                <input type="text" id="globalLocation" placeholder="e.g. Baton Rouge" class="w-full bg-white border border-stone-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-stone-400">
+            <div class="p-3 bg-stone-100 rounded border border-stone-200 text-xs text-stone-600">
+                <span class="font-semibold text-stone-800">Tip:</span> You can click anywhere on this page and press <kbd class="bg-white px-1 border border-stone-300 rounded font-mono font-bold">Ctrl+V</kbd> (or <kbd class="bg-white px-1 border border-stone-300 rounded font-mono font-bold">Cmd+V</kbd>) to instantly paste a screenshot from your snipping tool.
             </div>
-
-            <div class="flex items-center justify-between pt-2">
-                <label for="skipLocation" class="text-sm text-stone-700">Skip location check</label>
-                <input type="checkbox" id="skipLocation" class="rounded border-stone-300 text-stone-900 focus:ring-stone-500">
-            </div>
-
-            <hr class="border-stone-200 my-2">
 
             <div>
                 <label class="block text-xs font-medium uppercase tracking-wider text-stone-500 mb-1">Paste Schedule Text</label>
-                <textarea id="textInput" rows="6" placeholder="Paste text here...&#10;e.g., Monday, May 18: 8:00 AM - 4:30 PM" class="w-full bg-white border border-stone-200 rounded p-2 text-sm focus:outline-none focus:border-stone-400 font-mono"></textarea>
+                <textarea id="textInput" rows="6" placeholder="Paste text here...&#10;e.g., Monday, May 18: 8:00 AM - 4:30 PM&#10;Location: Baton Rouge" class="w-full bg-white border border-stone-200 rounded p-2 text-sm focus:outline-none focus:border-stone-400 font-mono"></textarea>
             </div>
 
             <div>
                 <label class="block text-xs font-medium uppercase tracking-wider text-stone-500 mb-1">Or Upload Screenshot</label>
                 <input type="file" id="fileInput" accept="image/*" class="w-full text-xs text-stone-500 file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-stone-200 file:text-stone-700 hover:file:bg-stone-300 cursor-pointer">
-                <div id="ocrStatus" class="text-xs text-stone-500 mt-1 hidden">Processing image...</div>
+                <div id="ocrStatus" class="text-xs text-stone-500 mt-1 hidden font-medium"></div>
             </div>
 
             <button id="parseBtn" class="w-full bg-stone-900 text-white rounded py-2 text-sm font-medium hover:bg-stone-800 transition">Parse Shifts</button>
         </div>
 
-        <!-- Review & Export Table -->
         <div class="md:col-span-2 space-y-4">
             <div class="border border-stone-200 rounded bg-white overflow-hidden">
                 <table class="w-full text-left border-collapse text-sm">
@@ -79,6 +67,7 @@
         let parsedShifts = [];
         const currentYear = 2026; 
 
+        // Event Listeners
         document.getElementById('parseBtn').addEventListener('click', () => {
             const text = document.getElementById('textInput').value;
             parseTextSchedule(text);
@@ -86,40 +75,80 @@
 
         document.getElementById('fileInput').addEventListener('change', function(e) {
             const file = e.target.files[0];
-            if (!file) return;
-            
+            if (file) processImageFile(file);
+        });
+
+        // Clipboard Paste Listener for Snipping Tool Compatibility
+        window.addEventListener('paste', function(e) {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    const blob = items[i].getAsFile();
+                    processImageFile(blob);
+                    e.preventDefault();
+                    break;
+                }
+            }
+        });
+
+        // Modularized Image Processor (DRY Compliance)
+        function processImageFile(file) {
             const statusDiv = document.getElementById('ocrStatus');
             statusDiv.classList.remove('hidden');
+            statusDiv.className = "text-xs text-amber-600 mt-1 font-medium";
             statusDiv.innerText = "Extracting text from image...";
 
             Tesseract.recognize(file, 'eng')
                 .then(({ data: { text } }) => {
                     document.getElementById('textInput').value = text;
+                    statusDiv.className = "text-xs text-green-600 mt-1 font-medium";
                     statusDiv.innerText = "Text extracted successfully.";
                     parseTextSchedule(text);
                 })
                 .catch(err => {
+                    statusDiv.className = "text-xs text-red-600 mt-1 font-medium";
                     statusDiv.innerText = "Error parsing image.";
                     console.error(err);
                 });
-        });
+        }
+
+        // Helper to cleanly sanitize text output against DOM Injection (XSS Mitigation)
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
 
         function parseTextSchedule(text) {
             parsedShifts = [];
             const lines = text.split('\n');
-            const globalLoc = document.getElementById('globalLocation').value.trim();
 
-            // Simple robust regex matching for standard times like 8:00 AM - 4:30 PM, 8am-4pm, 13:00-21:00
+            // Robust validation matching patterns
             const timeRegex = /([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?\s*(?:-|\u2013|\u2014|to)\s*([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?/i;
-            // Matches dates like May 18, 05/18, Monday May 18
             const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})|(\d{1,2})[\/\-](\d{1,2})/i;
+            
+            // Location Autogeneration Pattern (Looks for Location tags or locations trailing "at/site")
+            const locationRegex = /(?:location|loc|at|site|store|branch):\s*([A-Za-z0-9\s,._\-#]+)/i;
 
             let currentTrackedDate = new Date(currentYear, new Date().getMonth(), new Date().getDate());
+            let currentTrackedLocation = "";
 
+            // First pass or contextual line scan to extract broad location markers
             lines.forEach(line => {
-                if (!line.trim()) return;
+                const cleanLine = line.trim();
+                if (!cleanLine) return;
 
-                const dateMatch = line.match(dateRegex);
+                // Check for location contextual changes ahead of or alongside lines
+                const locMatch = cleanLine.match(locationRegex);
+                if (locMatch) {
+                    currentTrackedLocation = locMatch[1].trim();
+                }
+
+                const dateMatch = cleanLine.match(dateRegex);
                 if (dateMatch) {
                     if (dateMatch[1]) { // Month name format
                         const monthIdx = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(dateMatch[1].toLowerCase().substring(0,3));
@@ -129,7 +158,7 @@
                     }
                 }
 
-                const timeMatch = line.match(timeRegex);
+                const timeMatch = cleanLine.match(timeRegex);
                 if (timeMatch) {
                     let startH = parseInt(timeMatch[1]);
                     let startM = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
@@ -140,14 +169,13 @@
                     let endAmPm = timeMatch[6] ? timeMatch[6].toUpperCase() : null;
 
                     // Fallback inferring smart AM/PM logic if missing
-                    if (!startAmPm && endAmPm) startAmPm = endAmPm; // match end if start omitted
+                    if (!startAmPm && endAmPm) startAmPm = endAmPm; 
                     if (startAmPm === 'PM' && startH < 12) startH += 12;
                     if (startAmPm === 'AM' && startH === 12) startH = 0;
                     if (endAmPm === 'PM' && endH < 12) endH += 12;
                     if (endAmPm === 'AM' && endH === 12) endH = 0;
 
-                    // Standard default conversion logic for 24h fallback checks
-                    if (!startAmPm && !endAmPm && startH < 7) { startH += 12; } // Assume PM if small numbers
+                    if (!startAmPm && !endAmPm && startH < 7) { startH += 12; } 
                     if (!startAmPm && !endAmPm && endH < 12 && endH < startH) { endH += 12; }
 
                     const dateString = currentTrackedDate.toISOString().split('T')[0];
@@ -156,7 +184,7 @@
                         date: dateString,
                         startTime: `${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`,
                         endTime: `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`,
-                        location: globalLoc
+                        location: currentTrackedLocation // Automatically assigned from text context
                     });
                 }
             });
@@ -179,50 +207,44 @@
             parsedShifts.forEach((shift, index) => {
                 const tr = document.createElement('tr');
                 tr.className = "border-b border-stone-100 hover:bg-stone-50";
+                
+                // Programmatically built attributes securely mitigate potential XSS
                 tr.innerHTML = `
-                    <td class="p-3"><input type="date" value="${shift.date}" onchange="updateShift(${index}, 'date', this.value)" class="bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
-                    <td class="p-3"><input type="time" value="${shift.startTime}" onchange="updateShift(${index}, 'startTime', this.value)" class="bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
-                    <td class="p-3"><input type="time" value="${shift.endTime}" onchange="updateShift(${index}, 'endTime', this.value)" class="bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
-                    <td class="p-3"><input type="text" value="${shift.location}" placeholder="Missing Location" onchange="updateShift(${index}, 'location', this.value)" class="bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5 w-full"></td>
-                    <td class="p-3 text-center"><button onclick="deleteShift(${index})" class="text-stone-400 hover:text-red-600 font-medium">Remove</button></td>
+                    <td class="p-3"><input type="date" value="${escapeHtml(shift.date)}" data-index="${index}" data-field="date" class="table-input bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
+                    <td class="p-3"><input type="time" value="${escapeHtml(shift.startTime)}" data-index="${index}" data-field="startTime" class="table-input bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
+                    <td class="p-3"><input type="time" value="${escapeHtml(shift.endTime)}" data-index="${index}" data-field="endTime" class="table-input bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
+                    <td class="p-3"><input type="text" value="${escapeHtml(shift.location)}" placeholder="Unspecified Location" data-index="${index}" data-field="location" class="table-input bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5 w-full"></td>
+                    <td class="p-3 text-center"><button data-index="${index}" class="delete-btn text-stone-400 hover:text-red-600 font-medium">Remove</button></td>
                 `;
                 tbody.appendChild(tr);
+            });
+
+            // Clean event bindings targeting scoped structural actions safely
+            document.querySelectorAll('.table-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const idx = e.target.getAttribute('data-index');
+                    const field = e.target.getAttribute('data-field');
+                    parsedShifts[idx][field] = e.target.value;
+                });
+            });
+
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const idx = e.target.getAttribute('data-index');
+                    parsedShifts.splice(idx, 1);
+                    renderTable();
+                });
             });
 
             downloadBtn.disabled = false;
             downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
         }
 
-        window.updateShift = function(index, field, value) {
-            parsedShifts[index][field] = value;
-        };
-
-        window.deleteShift = function(index) {
-            parsedShifts.splice(index, 1);
-            renderTable();
-        };
-
         document.getElementById('downloadBtn').addEventListener('click', () => {
-            const skipLocation = document.getElementById('skipLocation').checked;
-            
-            // Validation step matching layout configuration rules
-            let valid = true;
-            if (!skipLocation) {
-                parsedShifts.forEach(s => {
-                    if (!s.location.trim()) valid = false;
-                });
-            }
-
-            if (!valid) {
-                alert("Generation failed: One or more shifts are missing a location. Provide a global location, fill individual rows, or check 'Skip location check'.");
-                return;
-            }
-
             generateICS();
         });
 
         function formatICSDate(dateStr, timeStr) {
-            // YYYYMMDDTHHMMSS
             const cleanDate = dateStr.replace(/[-]/g, '');
             const cleanTime = timeStr.replace(/[:]/g, '') + '00';
             return `${cleanDate}T${cleanTime}`;
@@ -240,15 +262,17 @@
                 const startFormatted = formatICSDate(shift.date, shift.startTime);
                 const endFormatted = formatICSDate(shift.date, shift.endTime);
                 
-                // Title format setup: (Location) Start-End formatted pretty
                 const displayStart = convert24to12(shift.startTime);
                 const displayEnd = convert24to12(shift.endTime);
-                const summary = `(${shift.location}) ${displayStart}-${displayEnd}`;
+                
+                // Graceful fallback display format cleanups
+                const locDisplay = shift.location ? `(${shift.location}) ` : '';
+                const summary = `${locDisplay}${displayStart}-${displayEnd}`;
 
-                // Calculate local 5:00 AM dynamic relative offset duration block to set alert target safely
+                // Safe dynamic relative alarm offset execution (Handles shifts starting before 5 AM gracefully)
                 const startParts = shift.startTime.split(':');
                 const startMinutesSinceMidnight = (parseInt(startParts[0]) * 60) + parseInt(startParts[1]);
-                const alarmMinutesOffset = startMinutesSinceMidnight - (5 * 60); // minutes between 5 AM and Start Time
+                let alarmMinutesOffset = startMinutesSinceMidnight - (5 * 60); 
 
                 icsContent.push('BEGIN:VEVENT');
                 icsContent.push(`DTSTART;TZID=America/Chicago:${startFormatted}`);
@@ -257,11 +281,16 @@
                 if (shift.location) {
                     icsContent.push(`LOCATION:${shift.location}`);
                 }
-                icsContent.push('TRANSP:OPAQUE'); // Busy setting
+                icsContent.push('TRANSP:OPAQUE');
 
-                // 5:00 AM day-of reminder block rules
+                // 5:00 AM dynamic processing validation block
                 icsContent.push('BEGIN:VALARM');
-                icsContent.push(`TRIGGER:-PT${alarmMinutesOffset}M`);
+                if (alarmMinutesOffset < 0) {
+                    // If event starts earlier than 5:00 AM, trigger alert immediately at start of shift
+                    icsContent.push('TRIGGER:PT0M');
+                } else {
+                    icsContent.push(`TRIGGER:-PT${alarmMinutesOffset}M`);
+                }
                 icsContent.push('ACTION:DISPLAY');
                 icsContent.push('DESCRIPTION:Shift Reminder');
                 icsContent.push('END:VALARM');
