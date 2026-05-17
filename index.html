@@ -68,13 +68,19 @@
                     </table>
                 </div>
 
-                <div class="flex flex-col items-end space-y-2 pt-2">
+                <div class="flex flex-col items-end space-y-3 pt-2">
                     <button id="downloadBtn" class="w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold transition-all opacity-45 cursor-not-allowed" disabled>
                         Awaiting schedule data...
                     </button>
-                    <p id="helpText" class="text-[11px] text-zinc-500 font-medium tracking-wide hidden">
-                        Downloads a standard calendar file that automatically adds these shifts to Google, Apple, or Outlook.
-                    </p>
+                    
+                    <a id="googleLink" href="https://calendar.google.com/calendar/r/settings/export" target="_blank" class="w-full sm:w-auto text-center bg-zinc-950 text-zinc-400 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold hover:text-white hover:border-zinc-700 transition-all hidden">
+                        2. Open Google Calendar Import Page &rarr;
+                    </a>
+
+                    <div id="helpText" class="text-[11px] text-zinc-500 font-medium tracking-wide hidden text-right leading-relaxed">
+                        Step 1: Save the calendar file above.<br>
+                        Step 2: Go to the Import Page and drop your downloaded file directly into the box.
+                    </div>
                 </div>
             </div>
         </main>
@@ -84,7 +90,6 @@
         let parsedShifts = [];
         const currentYear = 2026; 
 
-        // Infrastructure Event Hooks
         document.getElementById('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) handleImageStream(e.target.files[0]); });
         window.addEventListener('dragover', (e) => e.preventDefault());
         window.addEventListener('drop', (e) => {
@@ -92,7 +97,6 @@
             if (e.dataTransfer.files[0]) handleImageStream(e.dataTransfer.files[0]);
         });
 
-        // Universal Input Interceptor Matrix
         window.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
             let imageFound = false;
@@ -159,7 +163,6 @@
                 });
         }
 
-        // Multi-Line Shift Processor Logic Flow
         function parseTextSchedule(text) {
             const incomingShifts = [];
             const cleanInput = text.replace(/\u00A0/g, ' '); 
@@ -227,7 +230,6 @@
                 }
             });
 
-            // Run compiled blocks through the Smart Generation and Idempotency filters
             incomingShifts.forEach(incoming => {
                 const generatedTitle = automateDescription(incoming.task);
 
@@ -247,11 +249,9 @@
             renderTableUI();
         }
 
-        // Automated Semantic Dictionary Generation Engine
         function automateDescription(rawText) {
             const token = rawText.toLowerCase();
 
-            // Pattern Clustering Engine (Generates clean text instantly)
             if (token.includes('library') && token.includes('training') && (token.includes('listening') || token.includes('stsa'))) {
                 return "Library Training - Listening to STSA Calls";
             }
@@ -268,11 +268,9 @@
                 return "Calls Monitored @ Service Desk";
             }
 
-            // Fallback High-Security RegEx Scrubber for unfamiliar task streams
             return rawText
                 .replace(/\b(home|schedule|timesheets|time off|my shifts|team schedule|pick up shifts|prev week|next week)\b/gi, '')
                 .replace(/[-\s\d\]]*[=\]][-\s\d\][=xX]*$/, '')
-                // Drastically target and clip out ALL trailing characters following an "@" symbol at line ends
                 .replace(/\s*@\s*\S*$/g, '') 
                 .replace(/^[@•·*‐\-+\s>»®©ºª]*[bB]?[º®©]\s*/, '')
                 .replace(/^[@•·*‐\-+\s>»®©ºª]+/, '')
@@ -281,10 +279,10 @@
                 .trim();
         }
 
-        // Native Injection DOM Pipeline
         function renderTableUI() {
             const tbody = document.getElementById('shiftsTableBody');
             const downloadBtn = document.getElementById('downloadBtn');
+            const googleLink = document.getElementById('googleLink');
             const helpText = document.getElementById('helpText');
             tbody.innerHTML = '';
 
@@ -293,6 +291,7 @@
                 downloadBtn.disabled = true;
                 downloadBtn.innerText = "Awaiting schedule data...";
                 downloadBtn.className = "w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-bold transition-all opacity-45 cursor-not-allowed";
+                googleLink.classList.add('hidden');
                 helpText.classList.add('hidden');
                 return;
             }
@@ -335,8 +334,10 @@
             });
 
             downloadBtn.disabled = false;
-            downloadBtn.innerText = 'Export to Google Calendar / Calendar Apps';
+            downloadBtn.innerText = '1. Download Calendar File';
             downloadBtn.className = "w-full sm:w-auto bg-black text-[#FDD023] border border-[#FDD023]/40 rounded-lg px-6 py-2.5 text-xs font-bold shadow-sm hover:border-[#FDD023] transition-all cursor-pointer active:scale-[0.98]";
+            
+            googleLink.classList.remove('hidden');
             helpText.classList.remove('hidden');
         }
 
