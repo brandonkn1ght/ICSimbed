@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ICS Creator</title>
+    <!-- Tailwind CSS for minimal styling -->
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <!-- Tesseract.js for client-side screenshot OCR -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    </style>
+</head>
+<body class="bg-stone-50 text-stone-900 min-h-screen p-6 max-w-4xl mx-auto">
+
+    <header class="border-b border-stone-200 pb-4 mb-6">
+        <h1 class="text-xl font-semibold tracking-tight">ICS Creator</h1>
+        <p class="text-sm text-stone-500">Work Schedule → Google Calendar (.ics)</p>
+    </header>
+
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <!-- Configuration & Inputs -->
+        <div class="md:col-span-1 space-y-4">
+            <div>
+                <label class="block text-xs font-medium uppercase tracking-wider text-stone-500 mb-1">Global Location</label>
+                <input type="text" id="globalLocation" placeholder="e.g. Baton Rouge" class="w-full bg-white border border-stone-200 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-stone-400">
+            </div>
+
+            <div class="flex items-center justify-between pt-2">
+                <label for="skipLocation" class="text-sm text-stone-700">Skip location check</label>
+                <input type="checkbox" id="skipLocation" class="rounded border-stone-300 text-stone-900 focus:ring-stone-500">
+            </div>
+
+            <hr class="border-stone-200 my-2">
+
+            <div>
+                <label class="block text-xs font-medium uppercase tracking-wider text-stone-500 mb-1">Paste Schedule Text</label>
+                <textarea id="textInput" rows="6" placeholder="Paste text here...&#10;e.g., Monday, May 18: 8:00 AM - 4:30 PM" class="w-full bg-white border border-stone-200 rounded p-2 text-sm focus:outline-none focus:border-stone-400 font-mono"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-xs font-medium uppercase tracking-wider text-stone-500 mb-1">Or Upload Screenshot</label>
+                <input type="file" id="fileInput" accept="image/*" class="w-full text-xs text-stone-500 file:mr-4 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-medium file:bg-stone-200 file:text-stone-700 hover:file:bg-stone-300 cursor-pointer">
+                <div id="ocrStatus" class="text-xs text-stone-500 mt-1 hidden">Processing image...</div>
+            </div>
+
+            <button id="parseBtn" class="w-full bg-stone-900 text-white rounded py-2 text-sm font-medium hover:bg-stone-800 transition">Parse Shifts</button>
+        </div>
+
+        <!-- Review & Export Table -->
+        <div class="md:col-span-2 space-y-4">
+            <div class="border border-stone-200 rounded bg-white overflow-hidden">
+                <table class="w-full text-left border-collapse text-sm">
+                    <thead>
+                        <tr class="bg-stone-100 border-b border-stone-200 text-xs font-medium uppercase tracking-wider text-stone-500">
+                            <th class="p-3">Date</th>
+                            <th class="p-3">Start Time</th>
+                            <th class="p-3">End Time</th>
+                            <th class="p-3">Location</th>
+                            <th class="p-3 text-center">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="shiftsTableBody">
+                        <tr>
+                            <td colspan="5" class="p-4 text-center text-stone-400 italic">No shifts parsed yet.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="flex justify-end">
+                <button id="downloadBtn" class="bg-stone-900 text-white rounded px-4 py-2 text-sm font-medium hover:bg-stone-800 transition opacity-50 cursor-not-allowed" disabled>Download .ics File</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let parsedShifts = [];
+        const currentYear = 2026; 
+
+        document.getElementById('parseBtn').addEventListener('click', () => {
+            const text = document.getElementById('textInput').value;
+            parseTextSchedule(text);
+        });
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const statusDiv = document.getElementById('ocrStatus');
+            statusDiv.classList.remove('hidden');
+            statusDiv.innerText = "Extracting text from image...";
+
+            Tesseract.recognize(file, 'eng')
+                .then(({ data: { text } }) => {
+                    document.getElementById('textInput').value = text;
+                    statusDiv.innerText = "Text extracted successfully.";
+                    parseTextSchedule(text);
+                })
+                .catch(err => {
+                    statusDiv.innerText = "Error parsing image.";
+                    console.error(err);
+                });
+        });
+
+        function parseTextSchedule(text) {
+            parsedShifts = [];
+            const lines = text.split('\n');
+            const globalLoc = document.getElementById('globalLocation').value.trim();
+
+            // Simple robust regex matching for standard times like 8:00 AM - 4:30 PM, 8am-4pm, 13:00-21:00
+            const timeRegex = /([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?\s*(?:-|\u2013|\u2014|to)\s*([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?/i;
+            // Matches dates like May 18, 05/18, Monday May 18
+            const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})|(\d{1,2})[\/\-](\d{1,2})/i;
+
+            let currentTrackedDate = new Date(currentYear, new Date().getMonth(), new Date().getDate());
+
+            lines.forEach(line => {
+                if (!line.trim()) return;
+
+                const dateMatch = line.match(dateRegex);
+                if (dateMatch) {
+                    if (dateMatch[1]) { // Month name format
+                        const monthIdx = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(dateMatch[1].toLowerCase().substring(0,3));
+                        currentTrackedDate = new Date(currentYear, monthIdx, parseInt(dateMatch[2]));
+                    } else if (dateMatch[3]) { // MM/DD format
+                        currentTrackedDate = new Date(currentYear, parseInt(dateMatch[3]) - 1, parseInt(dateMatch[4]));
+                    }
+                }
+
+                const timeMatch = line.match(timeRegex);
+                if (timeMatch) {
+                    let startH = parseInt(timeMatch[1]);
+                    let startM = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+                    let startAmPm = timeMatch[3] ? timeMatch[3].toUpperCase() : null;
+
+                    let endH = parseInt(timeMatch[4]);
+                    let endM = timeMatch[5] ? parseInt(timeMatch[5]) : 0;
+                    let endAmPm = timeMatch[6] ? timeMatch[6].toUpperCase() : null;
+
+                    // Fallback inferring smart AM/PM logic if missing
+                    if (!startAmPm && endAmPm) startAmPm = endAmPm; // match end if start omitted
+                    if (startAmPm === 'PM' && startH < 12) startH += 12;
+                    if (startAmPm === 'AM' && startH === 12) startH = 0;
+                    if (endAmPm === 'PM' && endH < 12) endH += 12;
+                    if (endAmPm === 'AM' && endH === 12) endH = 0;
+
+                    // Standard default conversion logic for 24h fallback checks
+                    if (!startAmPm && !endAmPm && startH < 7) { startH += 12; } // Assume PM if small numbers
+                    if (!startAmPm && !endAmPm && endH < 12 && endH < startH) { endH += 12; }
+
+                    const dateString = currentTrackedDate.toISOString().split('T')[0];
+
+                    parsedShifts.push({
+                        date: dateString,
+                        startTime: `${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`,
+                        endTime: `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`,
+                        location: globalLoc
+                    });
+                }
+            });
+
+            renderTable();
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('shiftsTableBody');
+            const downloadBtn = document.getElementById('downloadBtn');
+            tbody.innerHTML = '';
+
+            if (parsedShifts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-stone-400 italic">No shifts parsed yet.</td></tr>';
+                downloadBtn.disabled = true;
+                downloadBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                return;
+            }
+
+            parsedShifts.forEach((shift, index) => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b border-stone-100 hover:bg-stone-50";
+                tr.innerHTML = `
+                    <td class="p-3"><input type="date" value="${shift.date}" onchange="updateShift(${index}, 'date', this.value)" class="bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
+                    <td class="p-3"><input type="time" value="${shift.startTime}" onchange="updateShift(${index}, 'startTime', this.value)" class="bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
+                    <td class="p-3"><input type="time" value="${shift.endTime}" onchange="updateShift(${index}, 'endTime', this.value)" class="bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5"></td>
+                    <td class="p-3"><input type="text" value="${shift.location}" placeholder="Missing Location" onchange="updateShift(${index}, 'location', this.value)" class="bg-transparent focus:bg-white border border-transparent focus:border-stone-200 rounded px-1 py-0.5 w-full"></td>
+                    <td class="p-3 text-center"><button onclick="deleteShift(${index})" class="text-stone-400 hover:text-red-600 font-medium">Remove</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            downloadBtn.disabled = false;
+            downloadBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+
+        window.updateShift = function(index, field, value) {
+            parsedShifts[index][field] = value;
+        };
+
+        window.deleteShift = function(index) {
+            parsedShifts.splice(index, 1);
+            renderTable();
+        };
+
+        document.getElementById('downloadBtn').addEventListener('click', () => {
+            const skipLocation = document.getElementById('skipLocation').checked;
+            
+            // Validation step matching layout configuration rules
+            let valid = true;
+            if (!skipLocation) {
+                parsedShifts.forEach(s => {
+                    if (!s.location.trim()) valid = false;
+                });
+            }
+
+            if (!valid) {
+                alert("Generation failed: One or more shifts are missing a location. Provide a global location, fill individual rows, or check 'Skip location check'.");
+                return;
+            }
+
+            generateICS();
+        });
+
+        function formatICSDate(dateStr, timeStr) {
+            // YYYYMMDDTHHMMSS
+            const cleanDate = dateStr.replace(/[-]/g, '');
+            const cleanTime = timeStr.replace(/[:]/g, '') + '00';
+            return `${cleanDate}T${cleanTime}`;
+        }
+
+        function generateICS() {
+            let icsContent = [
+                'BEGIN:VCALENDAR',
+                'VERSION:2.0',
+                'PRODID:-//ICS Creator Tool//EN',
+                'X-WR-TIMEZONE:America/Chicago'
+            ];
+
+            parsedShifts.forEach(shift => {
+                const startFormatted = formatICSDate(shift.date, shift.startTime);
+                const endFormatted = formatICSDate(shift.date, shift.endTime);
+                
+                // Title format setup: (Location) Start-End formatted pretty
+                const displayStart = convert24to12(shift.startTime);
+                const displayEnd = convert24to12(shift.endTime);
+                const summary = `(${shift.location}) ${displayStart}-${displayEnd}`;
+
+                // Calculate local 5:00 AM dynamic relative offset duration block to set alert target safely
+                const startParts = shift.startTime.split(':');
+                const startMinutesSinceMidnight = (parseInt(startParts[0]) * 60) + parseInt(startParts[1]);
+                const alarmMinutesOffset = startMinutesSinceMidnight - (5 * 60); // minutes between 5 AM and Start Time
+
+                icsContent.push('BEGIN:VEVENT');
+                icsContent.push(`DTSTART;TZID=America/Chicago:${startFormatted}`);
+                icsContent.push(`DTEND;TZID=America/Chicago:${endFormatted}`);
+                icsContent.push(`SUMMARY:${summary}`);
+                if (shift.location) {
+                    icsContent.push(`LOCATION:${shift.location}`);
+                }
+                icsContent.push('TRANSP:OPAQUE'); // Busy setting
+
+                // 5:00 AM day-of reminder block rules
+                icsContent.push('BEGIN:VALARM');
+                icsContent.push(`TRIGGER:-PT${alarmMinutesOffset}M`);
+                icsContent.push('ACTION:DISPLAY');
+                icsContent.push('DESCRIPTION:Shift Reminder');
+                icsContent.push('END:VALARM');
+
+                icsContent.push('END:VEVENT');
+            });
+
+            icsContent.push('END:VCALENDAR');
+
+            const blob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `work_schedule_${new Date().toISOString().split('T')[0]}.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function convert24to12(timeStr) {
+            const parts = timeStr.split(':');
+            let h = parseInt(parts[0]);
+            const m = parts[1];
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12;
+            h = h ? h : 12; 
+            return `${h}:${m} ${ampm}`;
+        }
+    </script>
+</body>
+</html>
