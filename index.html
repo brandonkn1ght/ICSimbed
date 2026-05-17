@@ -3,133 +3,150 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ICS Creator</title>
+    <title>Schedule Automator</title>
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        body { background-color: #000000; color: #f4f4f5; }
+        /* Smooth custom scrollbars for mobile table constraints */
+        ::-webkit-scrollbar { height: 4px; width: 4px; }
+        ::-webkit-scrollbar-track { background: #000000; }
+        ::-webkit-scrollbar-thumb { background: #18181b; border-radius: 2px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4c1d95; }
+    </style>
 </head>
-<body class="bg-black text-zinc-100 min-h-screen p-4 md:p-6 max-w-3xl mx-auto font-sans antialiased selection:bg-purple-900/50">
+<body class="min-h-screen p-4 md:p-8 max-w-2xl mx-auto font-sans antialiased selection:bg-purple-950 flex flex-col justify-between">
 
-    <header class="flex items-baseline justify-between border-b border-zinc-900 pb-3 mb-6">
-        <h1 class="text-sm font-mono tracking-wider uppercase text-zinc-400">
-            Schedule // <span class="text-white font-bold">Automator</span>
-        </h1>
-        <span class="text-[10px] font-mono text-zinc-600">2026_EDITION</span>
-    </header>
+    <div>
+        <header class="flex items-center justify-between border-b border-zinc-900 pb-4 mb-8">
+            <h1 class="text-xs font-mono tracking-widest uppercase text-zinc-500">
+                Schedule // <span class="text-zinc-100 font-bold tracking-normal">Automator</span>
+            </h1>
+            <span class="text-[10px] font-mono text-zinc-600">SYSTEM_YEAR // 2026</span>
+        </header>
 
-    <main class="space-y-4">
-        <div>
-            <textarea id="textInput" rows="5" 
-                placeholder="Paste text or drop/paste an image here...&#10;e.g., May 18: 10:00 AM - 2:00 PM Listening to STSAs CALLS" 
-                class="w-full bg-zinc-950 border border-zinc-900 rounded p-3 text-xs font-mono focus:outline-none focus:border-purple-500 text-zinc-200 placeholder-zinc-700 transition-colors shadow-inner resize-y"></textarea>
-        </div>
-
-        <div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs">
-            <label class="flex items-center justify-center border border-zinc-900 bg-zinc-950 px-3 py-1.5 rounded cursor-pointer text-zinc-400 hover:text-zinc-200 hover:border-zinc-800 transition-colors text-center sm:text-left">
-                <span id="uploadLabel">Upload Screenshot</span>
-                <input type="file" id="fileInput" accept="image/*" class="hidden">
-            </label>
-            
-            <div id="ocrStatus" class="text-[11px] font-mono text-amber-500 hidden"></div>
-
-            <button id="parseBtn" class="bg-zinc-100 text-black font-semibold px-4 py-1.5 rounded hover:bg-white active:scale-[0.99] transition-all cursor-pointer">
-                Find Shifts
-            </button>
-        </div>
-
-        <div class="pt-4">
-            <div class="overflow-x-auto border border-zinc-900 rounded bg-zinc-950/40">
-                <table class="w-full text-left border-collapse text-xs min-w-[600px]">
-                    <thead>
-                        <tr class="border-b border-zinc-900 text-[10px] font-mono uppercase tracking-wider text-zinc-500 bg-zinc-950">
-                            <th class="p-2.5 w-[18%]">Date</th>
-                            <th class="p-2.5 w-[13%]">Start Time</th>
-                            <th class="p-2.5 w-[13%]">End Time</th>
-                            <th class="p-2.5 w-[23%]">Location Context</th>
-                            <th class="p-2.5 w-[25%]">Task / Description</th>
-                            <th class="p-2.5 w-[8%] text-center"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="shiftsTableBody" class="divide-y divide-zinc-950">
-                        <tr>
-                            <td colspan="6" class="p-6 text-center text-zinc-600 font-mono italic text-[11px]">System idle. Add a schedule above to begin.</td>
-                        </tr>
-                    </tbody>
-                </table>
+        <main class="space-y-8">
+            <div id="dropZone" class="border border-dashed border-zinc-800 bg-[#020202] rounded-xl p-8 text-center transition-colors duration-200">
+                <div class="max-w-sm mx-auto space-y-3">
+                    <p class="text-xs text-zinc-400 font-medium">
+                        Click here and press <kbd class="bg-zinc-900 px-1.5 py-0.5 rounded text-[10px] border border-zinc-800 font-mono text-white">Ctrl+V</kbd> or <kbd class="bg-zinc-900 px-1.5 py-0.5 rounded text-[10px] border border-zinc-800 font-mono text-white">Cmd+V</kbd> to paste your schedule text or screenshot.
+                    </p>
+                    <div class="text-[11px] text-zinc-600 font-mono flex items-center justify-center gap-2">
+                        <span>or</span>
+                        <label class="text-zinc-400 hover:text-zinc-200 cursor-pointer underline underline-offset-2 transition-colors">
+                            browse file
+                            <input type="file" id="fileInput" accept="image/*" class="hidden">
+                        </label>
+                    </div>
+                </div>
+                <div id="ocrStatus" class="text-[11px] font-mono text-amber-500 mt-4 hidden"></div>
             </div>
 
-            <div class="flex flex-col items-end mt-4 space-y-1">
-                <button id="downloadBtn" class="w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded px-5 py-2.5 text-xs font-medium transition-all opacity-40 cursor-not-allowed" disabled>
-                    Awaiting schedule data...
-                </button>
-                <p id="helpText" class="text-[10px] text-zinc-600 font-normal hidden">
-                    Downloads a standard calendar file that automatically adds these shifts to Google, Apple, or Outlook.
-                </p>
+            <div class="space-y-4">
+                <div class="overflow-x-auto border border-zinc-900 rounded-xl bg-black">
+                    <table class="w-full text-left border-collapse text-xs min-w-[560px]">
+                        <thead>
+                            <tr class="border-b border-zinc-900 text-[10px] font-mono uppercase tracking-wider text-zinc-500 bg-[#020202]">
+                                <th class="p-3 w-[20%]">Date</th>
+                                <th class="p-3 w-[14%]">Start</th>
+                                <th class="p-3 w-[14%]">End</th>
+                                <th class="p-3 w-[44%]">Task / Description</th>
+                                <th class="p-3 w-[8%] text-center"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="shiftsTableBody" class="divide-y divide-zinc-950">
+                            <tr>
+                                <td colspan="5" class="p-8 text-center text-zinc-600 font-mono italic text-[11px]">No shifts loaded yet. Paste something above to instantly process it.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="flex flex-col items-end space-y-1.5 pt-2">
+                    <button id="downloadBtn" class="w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-medium transition-all opacity-40 cursor-not-allowed" disabled>
+                        Awaiting schedule data...
+                    </button>
+                    <p id="helpText" class="text-[10px] text-zinc-600 font-normal tracking-wide hidden">
+                        Downloads a standard calendar file that automatically adds these shifts to Google, Apple, or Outlook.
+                    </p>
+                </div>
             </div>
-        </div>
-    </main>
+        </main>
+    </div>
 
     <script>
         let parsedShifts = [];
         const currentYear = 2026;
 
-        // Core Interaction Hooks
-        document.getElementById('parseBtn').addEventListener('click', () => parseTextSchedule(document.getElementById('textInput').value));
-        document.getElementById('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) processImageStream(e.target.files[0]); });
+        // Interactive Event Hooking
+        document.getElementById('fileInput').addEventListener('change', (e) => { if (e.target.files[0]) handleImageStream(e.target.files[0]); });
         
-        // Native Clipboard Paste Interceptor
+        // Drag and Drop Visual Feedback Handlers
+        const dropZone = document.getElementById('dropZone');
+        window.addEventListener('dragover', (e) => e.preventDefault());
+        window.addEventListener('drop', (e) => {
+            e.preventDefault();
+            if (e.dataTransfer.files[0]) handleImageStream(e.dataTransfer.files[0]);
+        });
+
+        // Universal Clipboard Engine (Captures Text and Images globally without input boxes)
         window.addEventListener('paste', (e) => {
             const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            
+            // Look for screenshots/images first
             for (let i = 0; i < items.length; i++) {
                 if (items[i].type.indexOf('image') !== -1) {
-                    processImageStream(items[i].getAsFile());
+                    handleImageStream(items[i].getAsFile());
                     e.preventDefault();
-                    break;
+                    return;
                 }
+            }
+
+            // Fallback to plain text stream if no image is present
+            const textData = e.clipboardData.getData('text');
+            if (textData && textData.trim().length > 0) {
+                const statusDiv = document.getElementById('ocrStatus');
+                statusDiv.classList.remove('hidden');
+                statusDiv.className = "text-[11px] font-mono text-emerald-500 mt-3";
+                statusDiv.innerText = "TEXT_PASTE_RECEIVED";
+                parseTextSchedule(textData);
+                e.preventDefault();
             }
         });
 
-        // OCR Pipeline Management Engine
-        function processImageStream(file) {
+        function handleImageStream(file) {
             const statusDiv = document.getElementById('ocrStatus');
-            const label = document.getElementById('uploadLabel');
-            
-            label.innerText = file.name.length > 20 ? file.name.substring(0,17) + "..." : file.name;
             statusDiv.classList.remove('hidden');
-            statusDiv.className = "text-[11px] font-mono text-amber-500";
-            statusDiv.innerText = "READING_IMAGE_WORDS...";
+            statusDiv.className = "text-[11px] font-mono text-amber-500 animate-pulse mt-3";
+            statusDiv.innerText = "READING_IMAGE_DATA...";
 
             Tesseract.recognize(file, 'eng')
                 .then(({ data: { text } }) => {
-                    document.getElementById('textInput').value = text;
-                    statusDiv.className = "text-[11px] font-mono text-emerald-500";
-                    statusDiv.innerText = "READ_SUCCESS";
+                    statusDiv.className = "text-[11px] font-mono text-emerald-500 mt-3";
+                    statusDiv.innerText = "IMAGE_READ_SUCCESS";
                     parseTextSchedule(text);
                 })
                 .catch(err => {
-                    statusDiv.className = "text-[11px] font-mono text-rose-500";
-                    statusDiv.innerText = "READ_ERROR";
+                    statusDiv.className = "text-[11px] font-mono text-rose-500 mt-3";
+                    statusDiv.innerText = "IMAGE_READ_ERROR";
                     console.error(err);
                 });
         }
 
-        // Context-Aware Data Parser
+        // Sequential State-Memory Parser Engine
         function parseTextSchedule(text) {
             parsedShifts = [];
             const lines = text.split('\n');
 
             const timeRegex = /([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?\s*(?:-|\u2013|\u2014|to)\s*([0-1]?\d)(?::(\d{2}))?\s*([aApP][mM])?/i;
             const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{1,2})|(\d{1,2})[\/\-](\d{1,2})/i;
-            const locationRegex = /(?:location|loc|at|site|store|branch):\s*([A-Za-z0-9\s,._\-#]+)/i;
 
             let currentTrackedDate = new Date(currentYear, new Date().getMonth(), new Date().getDate());
-            let currentTrackedLocation = "";
+            let activeShift = null;
 
             lines.forEach(line => {
                 const clearLine = line.trim();
                 if (!clearLine) return;
-
-                const locMatch = clearLine.match(locationRegex);
-                if (locMatch) currentTrackedLocation = locMatch[1].trim();
 
                 const dateMatch = clearLine.match(dateRegex);
                 if (dateMatch) {
@@ -158,31 +175,40 @@
                     if (!startAmPm && !endAmPm && startH < 7) startH += 12;
                     if (!startAmPm && !endAmPm && endH < 12 && endH < startH) endH += 12;
 
-                    // Clean string extraction isolation routine
-                    let taskStr = clearLine;
-                    if (dateMatch) taskStr = taskStr.replace(dateMatch[0], '');
-                    if (timeMatch) taskStr = taskStr.replace(timeMatch[0], '');
-                    if (locMatch) taskStr = taskStr.replace(locMatch[0], '');
-                    
-                    taskStr = taskStr.replace(/^(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*/i, '')
-                                     .replace(/^[\s,.:;~\-|()]+|[\s,.:;~\-|()]+$/g, '') 
-                                     .replace(/\s+/g, ' ')
-                                     .trim();
-
-                    parsedShifts.push({
+                    activeShift = {
                         date: currentTrackedDate.toISOString().split('T')[0],
                         startTime: `${String(startH).padStart(2,'0')}:${String(startM).padStart(2,'0')}`,
                         endTime: `${String(endH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`,
-                        location: currentTrackedLocation,
-                        task: taskStr
-                    });
+                        task: ""
+                    };
+
+                    let remaining = clearLine.replace(timeMatch[0], '').replace(/^[\s• \-\|®©>]+|[\s• \-\|®©>]+$/g, '').trim();
+                    if (remaining && !remaining.match(dateRegex) && remaining.length > 2) {
+                        activeShift.task = remaining;
+                    }
+
+                    parsedShifts.push(activeShift);
+                } 
+                else if (!dateMatch && activeShift) {
+                    let cleanTaskLine = clearLine
+                        .replace(/^[\s• \-\|:;>»ºª®©]+|[\s• \-\|:;>»ºª®©]+$/g, '')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+
+                    if (cleanTaskLine && cleanTaskLine.length > 1) {
+                        if (activeShift.task) {
+                            activeShift.task += " - " + cleanTaskLine;
+                        } else {
+                            activeShift.task = cleanTaskLine;
+                        }
+                    }
                 }
             });
 
             renderTableUI();
         }
 
-        // Clean, Injection-Proof DOM Node Generation Engine
+        // Clean Injection-Proof DOM Construction
         function renderTableUI() {
             const tbody = document.getElementById('shiftsTableBody');
             const downloadBtn = document.getElementById('downloadBtn');
@@ -190,34 +216,34 @@
             tbody.innerHTML = '';
 
             if (parsedShifts.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" class="p-6 text-center text-zinc-600 font-mono italic text-[11px]">System idle. Add a schedule above to begin.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-zinc-600 font-mono italic text-[11px]">No shifts loaded yet. Paste something above to instantly process it.</td></tr>';
                 downloadBtn.disabled = true;
                 downloadBtn.innerText = "Awaiting schedule data...";
-                downloadBtn.className = "w-full sm:w-auto bg-zinc-950 text-zinc-500 border border-zinc-900 rounded px-5 py-2.5 text-xs font-medium transition-all opacity-40 cursor-not-allowed";
+                downloadBtn.className = "w-full sm:w-auto bg-zinc-950 text-zinc-600 border border-zinc-900 rounded-lg px-6 py-2.5 text-xs font-medium transition-all opacity-40 cursor-not-allowed";
                 helpText.classList.add('hidden');
                 return;
             }
 
             parsedShifts.forEach((shift, index) => {
                 const tr = document.createElement('tr');
-                tr.className = "border-b border-zinc-900 bg-zinc-900/10 hover:bg-zinc-900/30 transition-colors";
+                tr.className = "border-b border-zinc-900/60 bg-zinc-950/20 hover:bg-zinc-900/10 transition-colors";
 
-                const fields = [
+                const dataFields = [
                     { type: 'date', val: shift.date, field: 'date' },
                     { type: 'time', val: shift.startTime, field: 'startTime' },
                     { type: 'time', val: shift.endTime, field: 'endTime' },
-                    { type: 'text', val: shift.location, field: 'location', ph: 'Optional Location' },
-                    { type: 'text', val: shift.task, field: 'task', ph: 'No task noted' }
+                    { type: 'text', val: shift.task, field: 'task', ph: 'Describe task or details...' }
                 ];
 
-                fields.forEach(f => {
+                dataFields.forEach(f => {
                     const td = document.createElement('td');
                     td.className = "p-2";
                     const input = document.createElement('input');
                     input.type = f.type;
                     input.value = f.val;
                     if (f.ph) input.placeholder = f.ph;
-                    input.className = "w-full bg-transparent border border-transparent focus:border-zinc-800 focus:bg-black rounded px-2 py-1 text-zinc-200 focus:outline-none transition-all text-xs";
+                    input.className = "w-full bg-transparent border border-transparent focus:border-zinc-900 focus:bg-[#020202] rounded px-2 py-1 text-zinc-300 focus:outline-none transition-all text-xs font-mono";
+                    input.style.backgroundColor = "transparent";
                     input.addEventListener('change', (e) => { parsedShifts[index][f.field] = e.target.value; });
                     td.appendChild(input);
                     tr.appendChild(td);
@@ -227,7 +253,7 @@
                 actionTd.className = "p-2 text-center";
                 const rmBtn = document.createElement('button');
                 rmBtn.innerText = "✕";
-                rmBtn.className = "text-zinc-600 hover:text-rose-400 font-mono text-[11px] cursor-pointer transition-colors px-2";
+                rmBtn.className = "text-zinc-700 hover:text-rose-400 font-mono text-[11px] cursor-pointer transition-colors px-2 py-1";
                 rmBtn.addEventListener('click', () => { parsedShifts.splice(index, 1); renderTableUI(); });
                 actionTd.appendChild(rmBtn);
                 tr.appendChild(actionTd);
@@ -235,35 +261,27 @@
                 tbody.appendChild(tr);
             });
 
-            // Transition Export UI to human-accessible presentation variables
+            // Activate User-Friendly Export Actions
             downloadBtn.disabled = false;
-            downloadBtn.innerText = "Export to Google Calendar / Calendar Apps";
-            downloadBtn.className = "w-full sm:w-auto bg-black text-[#FDD023] border border-[#FDD023]/40 rounded px-5 py-2.5 text-xs font-semibold shadow-[0_0_10px_rgba(253,208,35,0.05)] hover:border-[#FDD023] transition-all cursor-pointer active:scale-[0.98]";
+            downloadBtn.innerText = 'Export to Google Calendar / Calendar Apps';
+            downloadBtn.className = "w-full sm:w-auto bg-black text-[#FDD023] border border-[#FDD023]/40 rounded-lg px-6 py-2.5 text-xs font-semibold shadow-sm hover:border-[#FDD023] transition-all cursor-pointer active:scale-[0.98]";
             helpText.classList.remove('hidden');
         }
 
-        // Native ICS Assembly Routine
         function formatICSDate(dateStr, timeStr) { return `${dateStr.replace(/[-]/g, '')}T${timeStr.replace(/[:]/g, '')}00`; }
-        function convert24to12(t) {
-            const p = t.split(':'); let h = parseInt(p[0]);
-            return `${h % 12 || 12}:${p[1]} ${h >= 12 ? 'PM' : 'AM'}`;
-        }
 
         function generateICSFile() {
-            let ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ICS Human Minimal//EN', 'X-WR-TIMEZONE:America/Chicago'];
+            let ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//ICS Automator Minimal//EN', 'X-WR-TIMEZONE:America/Chicago'];
 
             parsedShifts.forEach(s => {
                 const startFormatted = formatICSDate(s.date, s.startTime);
                 const endFormatted = formatICSDate(s.date, s.endTime);
                 
-                let summary = s.task ? s.task : `Work Shift`;
-                if (s.location) summary += ` (${s.location})`;
-
+                let summary = s.task ? s.task : "Work Shift";
                 const startParts = s.startTime.split(':');
                 const offset = ((parseInt(startParts[0]) * 60) + parseInt(startParts[1])) - 300; 
 
                 ics.push('BEGIN:VEVENT', `DTSTART;TZID=America/Chicago:${startFormatted}`, `DTEND;TZID=America/Chicago:${endFormatted}`, `SUMMARY:${summary}`);
-                if (s.location) ics.push(`LOCATION:${s.location}`);
                 if (s.task) ics.push(`DESCRIPTION:${s.task}`);
                 
                 ics.push('TRANSP:OPAQUE', 'BEGIN:VALARM', offset < 0 ? 'TRIGGER:PT0M' : `TRIGGER:-PT${offset}M`, 'ACTION:DISPLAY', 'DESCRIPTION:Shift Reminder', 'END:VALARM', 'END:VEVENT');
@@ -274,7 +292,7 @@
             const blob = new Blob([ics.join('\r\n')], { type: 'text/calendar;charset=utf-8;' });
             const link = document.createElement('a');
             link.href = URL.createObjectURL(blob);
-            link.download = `work_schedule_${new Date().toISOString().split('T')[0]}.ics`;
+            link.download = `schedule_${new Date().toISOString().split('T')[0]}.ics`;
             document.body.appendChild(link); link.click(); document.body.removeChild(link);
         }
 
